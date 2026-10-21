@@ -1,22 +1,45 @@
 # 🎵 MP3 Tag Reader & Editor
 
-A **from-scratch C utility** to **read** and **edit** ID3 metadata inside MP3 files — supporting both **ID3v1** and **ID3v2** (2.3 and 2.4) tag formats.
+> A **from-scratch C utility** to **read** and **edit** ID3 metadata inside MP3 files — supporting both **ID3v1** and **ID3v2** (2.3 and 2.4). No external libraries. Every byte handled manually.
 
-No external libraries. Pure C. Every byte handled manually.
+---
+
+## 📖 Description
+
+**MP3 Tag Reader & Editor** is a command-line application written in pure C that lets you inspect and modify the metadata embedded inside MP3 audio files.
+
+MP3 files store details like **Title, Artist, Album, Year, Genre, Track number, Comment, and Cover Art** inside structures called **ID3 tags**. There are two major versions in use today:
+
+- **ID3v1** — a **fixed 128-byte block at the END of the file**. Simple, old, space-padded text fields, single-byte genre index.
+- **ID3v2** — a **variable-size, frame-based block at the START of the file**. Modern, supports Unicode (UTF-8 / UTF-16), extended fields, album art, and multiple frames.
+
+Most real-world MP3 files carry **both tags** — for compatibility with old and new players. Most tag editors, unfortunately, edit only one, leaving the other **stale and inconsistent**. Over time, a file ends up showing "Queen" in one player and "queen" in another.
+
+This project solves that problem:
+
+1. **Reads** whichever tags are present — v1, v2, or both — and prints them in a clean, human-readable format.
+2. **Edits** a chosen field and writes the new value to **BOTH v1 and v2 tags in a single action**, so the file stays consistent no matter which tag a player reads.
+3. **Never corrupts the file** — v2 edits are performed as a **full-file rebuild + atomic rename**, so a crash mid-write leaves the original untouched.
+4. **Handles real-world complexities** — big-endian vs syncsafe frame sizes (v2.3 vs v2.4), multiple text encodings (ISO-8859-1, UTF-8, UTF-16), field length limits, and the fixed-layout nature of ID3v1.
+
+The project is a hands-on exercise in **binary file parsing**, **systems-level C**, **memory management**, and **safe file I/O** — the same techniques used in real MP3 libraries, media players, and tag editors.
+
+### Why does this matter?
+
+- Every media player on your phone, PC, or car stereo reads ID3 tags. Getting them right is what makes your music library display correctly.
+- Editing tag data means manipulating binary files **in place** — the wrong offsets or a missing `fflush` can silently corrupt a user's music.
+- Handling both tag versions simultaneously is a real engineering trade-off — v1 is fixed-size, v2 is variable-size, and the two can't be edited the same way.
+
+This project addresses all of it in ~500 lines of readable C.
 
 ---
 
 ## 📌 Overview
 
-MP3 files store their metadata — Title, Artist, Album, Year, Genre, Comment, Track, Cover Art — inside **ID3 tags**. There are two families:
-
 | Format | Location | Characteristics |
 |--------|----------|-----------------|
 | **ID3v1** | End of file | Fixed 128-byte block, space-padded fields, single-byte genre index |
 | **ID3v2** | Start of file | Variable-size, frame-based, supports UTF-8 / UTF-16, album art |
-
-Real MP3 files often carry **both tags**. Most tools edit only one, leaving the other stale.  
-This tool **reads and writes both**, keeping them **synchronized** in a single edit operation.
 
 ---
 
@@ -194,8 +217,16 @@ mp3-tag-reader/
 - 💼 LinkedIn: [naveenkumar-reddy-vangimalla](https://www.linkedin.com/in/naveenkumar-reddy-vangimalla-310184415/)
 
 Feel free to reach out for feedback, collaboration, or questions about the code.
+
 ---
+
+## 📄 License
+
+This project is released under the **MIT License**.
+
  
+
+---
 
 ## 🙏 Acknowledgements
 

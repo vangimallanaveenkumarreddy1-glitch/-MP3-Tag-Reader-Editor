@@ -1,124 +1,113 @@
 # 🎵 MP3 Tag Reader & Editor
 
-> A **from-scratch C utility** to **read** and **edit** ID3 metadata inside MP3 files — supporting both **ID3v1** and **ID3v2** (2.3 and 2.4). No external libraries. Every byte handled manually.
+A command-line utility written in **pure C** that reads, displays, and edits ID3 metadata embedded inside MP3 files — the tag data that stores title, artist, album, year, genre, comment, and cover art.
+
+**No external libraries.** No `taglib`, no `libid3tag`, no `mutagen`. Just `fopen`, `fread`, `fseek`, `fwrite`, `rename`, `malloc`, and `memcpy` — plus the ID3 specification.
 
 ---
 
-## 📖 Description
+## 📑 Table of Contents
 
-**MP3 Tag Reader & Editor** is a command-line application written in pure C that lets you inspect and modify the metadata embedded inside MP3 audio files.
-
-MP3 files store details like **Title, Artist, Album, Year, Genre, Track number, Comment, and Cover Art** inside structures called **ID3 tags**. There are two major versions in use today:
-
-- **ID3v1** — a **fixed 128-byte block at the END of the file**. Simple, old, space-padded text fields, single-byte genre index.
-- **ID3v2** — a **variable-size, frame-based block at the START of the file**. Modern, supports Unicode (UTF-8 / UTF-16), extended fields, album art, and multiple frames.
-
-Most real-world MP3 files carry **both tags** — for compatibility with old and new players. Most tag editors, unfortunately, edit only one, leaving the other **stale and inconsistent**. Over time, a file ends up showing "Queen" in one player and "queen" in another.
-
-This project solves that problem:
-
-1. **Reads** whichever tags are present — v1, v2, or both — and prints them in a clean, human-readable format.
-2. **Edits** a chosen field and writes the new value to **BOTH v1 and v2 tags in a single action**, so the file stays consistent no matter which tag a player reads.
-3. **Never corrupts the file** — v2 edits are performed as a **full-file rebuild + atomic rename**, so a crash mid-write leaves the original untouched.
-4. **Handles real-world complexities** — big-endian vs syncsafe frame sizes (v2.3 vs v2.4), multiple text encodings (ISO-8859-1, UTF-8, UTF-16), field length limits, and the fixed-layout nature of ID3v1.
-
-The project is a hands-on exercise in **binary file parsing**, **systems-level C**, **memory management**, and **safe file I/O** — the same techniques used in real MP3 libraries, media players, and tag editors.
-
-### Why does this matter?
-
-- Every media player on your phone, PC, or car stereo reads ID3 tags. Getting them right is what makes your music library display correctly.
-- Editing tag data means manipulating binary files **in place** — the wrong offsets or a missing `fflush` can silently corrupt a user's music.
-- Handling both tag versions simultaneously is a real engineering trade-off — v1 is fixed-size, v2 is variable-size, and the two can't be edited the same way.
-
-This project addresses all of it in ~500 lines of readable C.
-
----
-
-## 📌 Overview
-
-| Format | Location | Characteristics |
-|--------|----------|-----------------|
-| **ID3v1** | End of file | Fixed 128-byte block, space-padded fields, single-byte genre index |
-| **ID3v2** | Start of file | Variable-size, frame-based, supports UTF-8 / UTF-16, album art |
+- [Features](#-features)
+- [Supported Formats](#-supported-formats)
+- [Build & Run](#-build--run)
+- [Usage](#-usage)
+- [Commands Reference](#-commands-reference)
+- [How It Works](#-how-it-works)
+- [Project Structure](#-project-structure)
+- [Error Handling](#-error-handling)
+- [Limitations](#-limitations)
+- [Author](#-author)
 
 ---
 
 ## ✨ Features
 
-### View Mode
-- Detects and displays **ID3v1**, **ID3v2**, or **both** (if present)
-- ID3v1 → Title, Artist, Album, Year, Comment, Genre
-- ID3v2 → All text frames (`TIT2`, `TPE1`, `TALB`, `TYER`/`TDRC`, `TCON`, `TRCK`, `COMM`, `TCOM`, `TPUB`, `TENC`, `TSSE`, `TLEN`, `TCOP`) + `APIC` cover-art metadata
-- Correctly decodes **ID3v2.3** (big-endian sizes) and **ID3v2.4** (syncsafe sizes)
-- Handles **ISO-8859-1**, **UTF-8**, and **UTF-16** text encodings
+### View Mode (`-v`)
+- Read and display **ID3v1** tags (fixed 128-byte trailer at end of file)
+- Read and display **ID3v2** tags (frame-based header at start of file)
+- Detect and show **both** tags when a file carries both
+- Print every recognized text frame: `TIT2`, `TPE1`, `TALB`, `TYER`/`TDRC`, `TCON`, `TRCK`, `COMM`, `TCOM`, `TPUB`, `TENC`, `TSSE`, `TLEN`, `TCOP`
+- Show **APIC** cover-art metadata (MIME type, size, picture type)
+- Optional filter to view only v1 or only v2
 
-### Edit Mode
-- Edit **Title, Artist, Album, Year, Comment, Genre**
-- **One prompt, both tags updated** — v1 and v2 stay in sync
-- **Length validated** against the smaller format (30 chars for text, 4 for year) so neither tag is left inconsistent
-- **Genre** stored correctly in each format:
-  - ID3v1 → 1-byte numeric index (0-147)
-  - ID3v2 → text `TCON` frame
-- **ID3v1 edited in place** via `fseek` / `fwrite`
-- **ID3v2 fully rebuilt** — tag size changes when text length changes, so the file is reconstructed in memory
-- **Atomic writes** via temp file + `rename()` — file never corrupted mid-write
-
-### Safety Features
-- 🔒 Atomic v2 rewrite (temp → rename)
-- 🔒 Overflow-safe integer parsing for genre IDs
-- 🔒 `fflush` after every in-place write
-- 🔒 Reopen file after v2 edit (rename invalidates old `FILE*`)
-- 🔒 Input validation for genre range and field length
-- 🔒 `fread` / `fwrite` / `fseek` return-value checks
+### Edit Mode (`-e`)
+- Edit any single field by name — case-insensitive
+- Update **both** v1 and v2 tags in one shot when both exist (keeps tags in sync)
+- Enforce v1 field limits (30 chars for text, 4 for year) so tags never diverge
+- Numeric genre index (0–147) handled correctly per format — byte in v1, text `TCON` in v2
+- **Atomic writes** — rebuild to a temp file, `rename()` over the original, so a crash never corrupts audio
+- Encoding-aware: ISO-8859-1, UTF-8 (v2.4), UTF-16 with BOM (v2.3 non-ASCII)
 
 ---
 
-## 🛠️ Build & Run
+## 📦 Supported Formats
+
+| Format | Location | Supported |
+|---|---|---|
+| **ID3v1** | Last 128 bytes of file | ✅ Read + Edit |
+| **ID3v1.1** | Last 128 bytes (track # in comment) | ✅ Read |
+| **ID3v2.3** | First N bytes (big-endian sizes) | ✅ Read + Edit |
+| **ID3v2.4** | First N bytes (synchsafe sizes) | ✅ Read + Edit |
+| **ID3v2.2** | First N bytes (3-byte IDs) | ❌ Not supported |
+
+---
+
+## 🛠 Build & Run
 
 ### Prerequisites
-- A C compiler (`gcc`, `clang`, or MSVC)
-- Any POSIX shell (Linux, macOS) or WSL on Windows
+- `gcc` (or any C99 compiler)
+- GNU Make (optional)
 
-### Compile
+### Build
+
 ```bash
 gcc main.c print.c edit.c -o mp3tag
 ```
 
-Or use the provided `Makefile`:
+Or with Make:
+
 ```bash
 make
 ```
 
-### Run
+### Quick Test
+
 ```bash
-./mp3tag <song_name.mp3>
+./mp3tag sample.mp3 -v
 ```
 
-### Example
-```bash
-$ ./mp3tag sample-12s.mp3
+---
 
+## 🚀 Usage
+
+```
+./mp3tag <song.mp3> -v [v1|v2]
+./mp3tag <song.mp3> -e <field> "<value>"
+```
+
+### View All Tags
+
+```bash
+./mp3tag song.mp3 -v
+```
+
+**Output:**
+
+```
 ================================================================================
                               MP3 TAG READER
 ================================================================================
 
-MENU :-
----------
-1. VIEW SONG DETILES
-2. EDIT SONG DETILES
-3. EXIT
-
-Plese Select Your Choise : 1
-
 Id3v2 found !!..
 
--------- ID3v2.3.0 Tag [ size = 1407 bytes ] ---------
+-------- ID3v2.3.0 Tag [ size = 1413 bytes ] ---------
 
   Title    : Bohemian Rhapsody
   Artist   : Queen
   Album    : A Night at the Opera
   Year     : 1975
-  Genre    : 3
+  Genre    : Rock
   Track    : 11
 
 ----------------- ID3v1 Tag -------------------
@@ -128,84 +117,217 @@ Id3v2 found !!..
   Album   : A Night at the Opera
   Year    : 1975
   Comment : Test comment for project
-  Genre   :  Unknown
+  Genre   : Rock
+
+********************* Thank You  *************************
 ```
 
-### Edit Example
-```
-MENU :-
-1. VIEW SONG DETILES
-2. EDIT SONG DETILES
-3. EXIT
+### View Only ID3v1 or ID3v2
 
-Plese Select Your Choise : 2
-
-1. Title
-2. Artist
-3. Album
-4. Year
-5. Comment
-6. Genre
-7. Exit
-
- Enter Your Choice: 4
-New value: 2026
-Updated [v1] [v2].
+```bash
+./mp3tag song.mp3 -v v1
+./mp3tag song.mp3 -v v2
 ```
 
-Both tags now show `2026` when viewed again.
+### Edit a Field
+
+```bash
+./mp3tag song.mp3 -e title   "Bohemian Rhapsody"
+./mp3tag song.mp3 -e artist  "Queen"
+./mp3tag song.mp3 -e album   "A Night at the Opera"
+./mp3tag song.mp3 -e year    1975
+./mp3tag song.mp3 -e comment "My favourite track"
+./mp3tag song.mp3 -e genre   17
+```
+
+**Output:**
+
+```
+Updated 'title' successfully.
+```
+
+---
+
+## 📖 Commands Reference
+
+### Flags
+
+| Flag | Argument | Description |
+|---|---|---|
+| `-v` | *(optional)* `v1` or `v2` | View both tags, or only one |
+
+### Edit Fields
+
+| Field keyword | Edits | Max length |
+|---|---|---|
+| `title` | Song title | 30 chars |
+| `artist` | Artist / band | 30 chars |
+| `album` | Album name | 30 chars |
+| `year` | Release year | 4 chars |
+| `comment` | Comment field | 30 chars |
+| `genre` | Genre index (0–147) | numeric |
+
+Field names are **case-insensitive**. Values containing spaces **must be quoted**.
+
+### Common Genre Indices
+
+| Index | Genre | Index | Genre |
+|---|---|---|---|
+| 0 | Blues | 17 | Rock |
+| 1 | Classic Rock | 20 | Alternative |
+| 2 | Country | 32 | Classical |
+| 8 | Jazz | 52 | Electronic |
+| 13 | Pop | 127 | Acapella |
+| 14 | R&B | 147 | Dance Hall |
+
+Full 148-entry table lives in `GENRES[]` in `print.c`.
+
+---
+
+## 🔬 How It Works
+
+### File Layout
+
+```
+┌──────────────┬──────────────────────┬─────────────────────┬───────────────┐
+│ ID3v2 header │  ID3v2 frames        │   MP3 audio frames  │  ID3v1 (128B) │
+│  (10 bytes)  │  (variable length)   │  (the actual music) │  at file end  │
+└──────────────┴──────────────────────┴─────────────────────┴───────────────┘
+```
+
+### ID3v1 — In-Place Patching
+
+Every field has a **fixed offset** from the end of file, so editing is trivial:
+
+```c
+fseek(fp, -125, SEEK_END);            /* Title field */
+fwrite(padded_value, 1, 30, fp);      /* 30 bytes, space-padded */
+```
+
+No file-size change → no rebuild → instantaneous even on huge files.
+
+### ID3v2 — Rebuild & Atomic Replace
+
+Frames are **variable-length**. If a title grows from 8 to 20 bytes, the whole tag shifts and the audio bytes must move. So editing goes through five steps:
+
+1. **Load whole file** into memory (`v2_load`)
+2. **Walk frames** — decode each frame's size (big-endian for v2.3, synchsafe for v2.4)
+3. **Build replacement frame** with correct encoding
+4. **Splice** — `pre + new_frame + post + audio` into a new buffer, then rewrite the header's **synchsafe tag size** field
+5. **Atomic save** — write to `song.mp3.tmp`, then `rename()` over the original
+
+A `rename()` is atomic on POSIX — consumers see either the whole old file or the whole new file, never a half-written one.
+
+### Synchsafe Integers
+
+ID3v2.4 stores sizes in a special format where **each byte only uses its lower 7 bits**:
+
+```c
+/* 4 bytes × 7 bits = 28 usable bits */
+int v2_rd_syncsafe(unsigned char *b)
+{
+    return ((b[0] & 0x7F) << 21) |
+           ((b[1] & 0x7F) << 14) |
+           ((b[2] & 0x7F) <<  7) |
+            (b[3] & 0x7F);
+}
+```
+
+Forgetting the `& 0x7F` mask means every size reads as garbage and the file won't open.
 
 ---
 
 ## 📁 Project Structure
 
 ```
-mp3-tag-reader/
-├── main.c        Entry point — CLI parsing, menu loop, view/edit dispatch
-├── print.c       Tag reading & printing (check_type, print_idv1, print_idv2, frame_name, ...)
-├── edit.c        Tag writing (edit, edit_v1, edit_v2 + v2_* encoding helpers)
-├── main.h        Shared prototypes, GENRE_COUNT constant
-├── Makefile      Build script
-└── README.md     This file
+.
+├── main.c        # CLI parsing, view/edit dispatch
+├── print.c       # Tag reading & printing
+│                 # check_type, print_idv1, print_idv2,
+│                 # syncnum, big_to_int, frame_name,
+│                 # id3v2_read_pic, remove_space
+├── edit.c        # Tag writing
+│                 # edit_v1, edit_v2,
+│                 # v2_load, v2_save, v2_build_frame,
+│                 # v2_rd_be32, v2_rd_syncsafe,
+│                 # v2_wr_be32, v2_wr_syncsafe,
+│                 # v2_make_text_body
+├── main.h        # Shared prototypes, GENRE_COUNT
+└── README.md     # This file
+```
+
+### Function Map
+
+| File | Function | Purpose |
+|---|---|---|
+| `main.c` | `main()` | Parse CLI, dispatch to view/edit |
+| `print.c` | `check_type()` | Detect v1 / v2 / both / none |
+| `print.c` | `print_idv1()` | Print 128-byte v1 tag |
+| `print.c` | `print_idv2()` | Walk and print v2 frames |
+| `print.c` | `id3v2_read_pic()` | Parse APIC frame metadata |
+| `print.c` | `syncnum()`, `big_to_int()` | Decode size fields |
+| `edit.c` | `edit_v1()` | Patch 128-byte v1 trailer in place |
+| `edit.c` | `edit_v2()` | Rebuild entire v2 tag + audio |
+| `edit.c` | `v2_load()`, `v2_save()` | Whole-file load, atomic save |
+| `edit.c` | `v2_build_frame()` | Assemble `[ID][size][flags][body]` |
+
+---
+
+## ⚠️ Error Handling
+
+Every failure exits with code **1** and prints a message on `stderr`:
+
+| Condition | Message |
+|---|---|
+| Wrong arg count | `Invalid Argument Count.` + usage |
+| Not `.mp3` | `Error: '<file>' does not have .mp3 extension.` |
+| Cannot open | `Error: cannot open '<file>'` |
+| Unknown flag | `Error: unknown flag '<flag>'` |
+| Unknown field | `Error: unknown field '<name>'` |
+| Genre out of range | `Error: genre must be a number between 0 and 147` |
+| Value too long (v1) | `Error: value too long for v1 (max N chars).` |
+| No tag on file | `Error: file has no ID3 tag; nothing to edit.` |
+
+Success returns **0**. Useful in shell scripts:
+
+```bash
+./mp3tag song.mp3 -e title "X" && echo OK || echo FAILED
 ```
 
 ---
 
-## 🧠 Concepts Applied
+## 🚧 Limitations
 
-| Concept | Where |
-|---------|-------|
-| Binary file I/O | `fread` / `fwrite` / `fseek` / `ftell` throughout |
-| Big-endian ↔ little-endian conversion | `v2_rd_be32`, `v2_wr_be32` |
-| Syncsafe integer encoding (v2.4 spec) | `v2_rd_syncsafe`, `v2_wr_syncsafe` |
-| Frame walking with padding detection | `edit_v2`, `print_idv2` |
-| Encoding handling | ISO-8859-1, UTF-8, UTF-16 BOM |
-| Memory management | `malloc` / `free` with full error-path cleanup |
-| Atomic file replace | `v2_save` — temp file + `rename()` |
-| Overflow-safe integer parsing | Genre index validation |
-| `FILE*` state management | Reopen after v2 rewrite to avoid stale inode |
+- **ID3v2.2** (3-byte frame IDs) — not supported
+- **Extended headers** — parsed on read but not rebuilt on write
+- **Unsynchronisation** — flag is detected but bytes are not de-unsynchronised
+- **Multi-value frames** — reads first value only
+- **Very large files** — `edit_v2` loads the whole file into memory (fine for typical MP3s; not ideal for 4 GB files)
+- **Windows paths** — `rename()` works but the atomic guarantee is weaker on Windows than POSIX
 
 ---
 
-## ⚠️ Not Supported
+## 🧪 Testing
 
-- **ID3v2.2** — old 3-byte frame IDs and 3-byte sizes (rare today)
-- **ID3v2 unsynchronisation** — rare; treated as raw bytes
-- **Compressed / encrypted frames** — spec allows them; not handled
-- **Multiple APIC frames** — only the first is reported
-- **Windows native builds** — the code uses POSIX-compatible paths (should still compile under MSVC; not tested)
+Create a test file with a known tag, then verify read-back:
 
----
+```bash
+# 1. Copy any MP3 with an existing tag
+cp sample.mp3 test.mp3
 
-## 🚀 Future Improvements
+# 2. Read it
+./mp3tag test.mp3 -v
 
-- [ ] Add **ID3v2.2** support
-- [ ] Decode and display **APIC image** to a file (extract cover art)
-- [ ] Support **UTF-16 decoding** in `print_idv2` for international text
-- [ ] Add **batch editing** (edit tags across a directory)
-- [ ] Implement **tag conversion** (v2 → v1, v1 → v2)
-- [ ] Add a **GUI** or web front-end
-- [ ] Unit tests with a suite of sample MP3 files
+# 3. Edit it
+./mp3tag test.mp3 -e title "New Title"
+./mp3tag test.mp3 -e artist "New Artist"
+./mp3tag test.mp3 -e year 2024
+
+# 4. Read it back
+./mp3tag test.mp3 -v
+```
+
+Expect both `ID3v1` and `ID3v2` sections to show the updated values.
 
 ---
 
@@ -213,26 +335,10 @@ mp3-tag-reader/
 
 **Vangimalla Naveen Kumar Reddy**
 
-- 📧 Email: [vangimallanaveenkumarreddy1@gmail.com](mailto:vangimallanaveenkumarreddy1@gmail.com)
-- 💼 LinkedIn: [naveenkumar-reddy-vangimalla](https://www.linkedin.com/in/naveenkumar-reddy-vangimalla-310184415/)
-
-Feel free to reach out for feedback, collaboration, or questions about the code.
+Built as a deep-dive into binary file formats, C file I/O, and the ID3 specification.
 
 ---
 
-## 📄 License
+## 📜 License
 
-This project is released under the **MIT License**.
-
- 
-
----
-
-## 🙏 Acknowledgements
-
-- **ID3.org** — the official tag specification
-- All the sample MP3 files used for testing during development
-
----
-
-⭐ If you found this project useful or interesting, please **star the repo**! ⭐
+This project is for educational purposes. No warranty. Use at your own risk.

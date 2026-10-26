@@ -287,7 +287,7 @@ int edit_v1(FILE *fp, int op, char *new_value)
 }
 
 // Main function definition to do edit operation in .mp3 files.
-void edit(FILE *fp, int type, char *fname)
+void edit(FILE *fp, int type, char *fname,CLA c1)
 {
     if (fp == NULL)
         return;
@@ -303,41 +303,19 @@ void edit(FILE *fp, int type, char *fname)
         if (fseek(fp, -128, SEEK_END) == 0 && fread(t, 1, 3, fp) == 3 && memcmp(t, "TAG", 3) == 0)
             has_v1 = 1;
     }
-
-    printf("\n1. Title\n2. Artist\n3. Album\n4. Year\n5. Comment\n6. Genre\n7. Exit\n");
-    printf("\n Enter Your Choice: ");
-
-    int op=0;
-    scanf(" %d", &op);
-    if ( op < 1 || op > 7) 
-    {
-        printf("Invalid choice.\n");
-        return;
-    }
-    else if(op == 7)
-    {
-        printf("\nEdit Cancilled....\n");
-        return;
-    }
-
+    int op=c1.op;
     char new_value[1024] = { 0 };
-    if (op == 6) {
-        int g;
-        printf("New Genre index (0-147): ");
-        if (scanf("%d", &g) != 1 || g < 0 || g > 147) 
-        {
+    if (op == 6) 
+    {
+        int g = c1.op6;
+        if (g < 0 || g > 147) {
             printf("Invalid genre.\n");
-            int c; 
-            while ((c = getchar()) != '\n' && c != EOF) {}
             return;
         }
         snprintf(new_value, sizeof new_value, "%d", g);
     } else {
-        printf("New value: ");
-        if (scanf(" %1023[^\n]", new_value) != 1) {
-            printf("Cancelled.\n");
-            return;
-        }
+        strncpy(new_value, c1.data, sizeof(new_value) - 1);
+        new_value[sizeof(new_value) - 1] = '\0';  
     }
 
     /* length check against v1 limits */
